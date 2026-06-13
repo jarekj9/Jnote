@@ -1,0 +1,32 @@
+services:
+  jnote_backend:
+    build: ./backend
+    container_name: jnote_backend
+    hostname: jnote_backend
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      DB_PATH: /data/jnote.sqlite
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@jnote.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-http://localhost:8080/api/auth/google/callback}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:8080}
+    volumes:
+      - jnote_data:/data
+
+  jnote_frontend:
+    build: ./frontend
+    container_name: jnote_frontend
+    hostname: jnote_frontend
+    restart: unless-stopped
+    depends_on:
+      - jnote_backend
+    ports:
+      - "${HOST_PORT:-8080}:80"
+
+volumes:
+  jnote_data:

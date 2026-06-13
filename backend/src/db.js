@@ -1,0 +1,82 @@
+import Database from 'better-sqlite3';
+import fs from 'node:fs';
+import path from 'node:path';
+import { config } from './config.js';
+
+// Ensure the directory containing the SQLite file exists.
+const dir = path.dirname(config.dbPath);
+if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+export const db = new Database(config.dbPath);
+db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
+
+const SCHEMA = `
+CREATE TABLE IF NOT EXISTS users (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  username      TEXT UNIQUE NOT NULL,
+  email         TEXT UNIQUE,
+  password_hash TEXT,
+  google_id     TEXT UNIQUE,
+  role          TEXT NOT NULL DEFAULT 'user',   -- 'user' | 'admin'
+  status        TEXT NOT NULL DEFAULT 'pending',-- 'pending' | 'active' | 'disabled'
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS folders (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  parent_id  INTEGER REFERENCES folders(id) ON DELETE CASCADE,
+  name       TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_folders_user_parent ON folders(user_id, parent_id);
+
+CREATE TABLE IF NOT EXISTS notes (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  folder_id  INTEGER REFERENCES folders(id) ON DELETE SET NULL,
+  title      TEXT NOT NULL,
+  content    TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_notes_user_folder ON notes(user_id, folder_id);
+CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes(updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS tags (
+  id      INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name    TEXT NOT NULL,
+  UNIQUE(user_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS note_tags (
+  note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+  tag_id  INTEGER NOT NULL REFERENCES tags(id)  ON DELETE CASCADE,
+  PRIMARY KEY (note_id, tag_id)
+);
+CREATE INDEX IF NOT EXISTS idx_note_tags_tag ON note_tags(tag_id);
+
+-- Full-text search over note title and content.
+CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
+  title, content, content='notes', content_rowid='id'
+);
+
+-- Triggers keep the FTS index in sync.
+CREATE TRIGGER IF NOT EXISTS notes_ai AFTER INSERT ON notes BEGIN
+  INSERT INTO notes_fts(rowid, title, content) VALUES (new.id, new.title, new.content);
+END;
+CREATE TRIGGER IF NOT EXISTS notes_ad AFTER DELETE ON notes BEGIN
+  INSERT INTO notes_fts(notes_fts, rowid, title, content) VALUES('delete', old.id, old.title, old.content);
+END;
+CREATE TRIGGER IF NOT EXISTS notes_au AFTER UPDATE ON notes BEGIN
+  INSERT INTO notes_fts(notes_fts, rowid, title, content) VALUES('delete', old.id, old.title, old.content);
+  INSERT INTO notes_fts(rowid, title, content) VALUES (new.id, new.title, new.content);
+END;
+`;
+
+db.exec(SCHEMA);
+
+// One-time index warmup is implicit on first INSERT/UPDATE.

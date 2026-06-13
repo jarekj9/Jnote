@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Jnote</title>
+  <link rel="stylesheet" href="/css/style.css" />
+  <!-- Vendored libs (see README > Vendoring if you need to refresh them). -->
+  <script defer src="/vendor/marked.min.js"></script>
+  <script defer src="/vendor/dompurify.min.js"></script>
+  <script type="module" src="/js/app.js"></script>
+</head>
+<body class="theme-light">
+  <!-- Top bar: search, theme toggle, account menu. Always visible. -->
+  <header id="topbar" hidden>
+    <button id="sidebarToggle" class="icon-btn" title="Toggle sidebar" aria-label="Toggle sidebar">&#9776;</button>
+    <div class="brand">Jnote</div>
+    <div class="search-wrap">
+      <input id="searchInput" type="search" placeholder="Search notes (text, #tag)" autocomplete="off" />
+    </div>
+    <button id="themeToggle" class="icon-btn" title="Toggle theme" aria-label="Toggle theme">&#9728;</button>
+    <div class="user-menu">
+      <button id="userBtn" class="icon-btn" title="Account" aria-label="Account">&#128100;</button>
+      <div id="userMenu" class="menu" hidden>
+        <div class="menu-header" id="userMenuName"></div>
+        <a id="adminLink" class="menu-item" href="#/admin" hidden>Admin panel</a>
+        <a id="exportAllLink" class="menu-item" href="/api/export/all">Export all (.zip)</a>
+        <label class="menu-item" for="importInput">Import…</label>
+        <input id="importInput" type="file" accept=".md,.zip" multiple hidden />
+        <button class="menu-item" id="logoutBtn">Log out</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Auth screen (replaces app until signed in). -->
+  <main id="auth" hidden>
+    <div class="auth-card">
+      <h1>Jnote</h1>
+      <div class="tabs">
+        <button class="tab active" data-tab="login">Log in</button>
+        <button class="tab" data-tab="register">Register</button>
+      </div>
+      <form id="loginForm" class="tab-panel active">
+        <label>Username or email <input name="username" required /></label>
+        <label>Password <input name="password" type="password" required /></label>
+        <button type="submit">Log in</button>
+        <div class="form-msg" data-form="login"></div>
+        <button id="googleLogin" type="button" class="google-btn" hidden>Continue with Google</button>
+      </form>
+      <form id="registerForm" class="tab-panel">
+        <label>Username <input name="username" required /></label>
+        <label>Email (optional) <input name="email" type="email" /></label>
+        <label>Password <input name="password" type="password" required minlength="4" /></label>
+        <button type="submit">Create account</button>
+        <p class="muted">Your account must be approved by an admin before you can log in.</p>
+        <div class="form-msg" data-form="register"></div>
+      </form>
+      <a id="switchAccount" class="muted switch-link" href="#">Use a different account</a>
+    </div>
+  </main>
+
+  <!-- Main app shell. -->
+  <div id="app" hidden>
+    <aside id="sidebar">
+      <div class="sidebar-toolbar">
+        <button id="newFolderBtn" class="icon-btn" title="New folder">+&#128193;</button>
+        <button id="newNoteBtn" class="icon-btn" title="New note">+&#128221;</button>
+        <select id="sortSelect" title="Sort">
+          <option value="name">Name A→Z</option>
+          <option value="name_desc">Name Z→A</option>
+          <option value="updated">Modified (newest)</option>
+          <option value="updated_asc">Modified (oldest)</option>
+          <option value="created">Created (newest)</option>
+          <option value="created_asc">Created (oldest)</option>
+        </select>
+      </div>
+      <div id="tree" class="tree"></div>
+      <div id="tagList" class="tag-list"></div>
+    </aside>
+
+    <main id="noteView" class="note-view">
+      <div id="empty" class="empty">
+        <p>Select a note, or create a new one.</p>
+      </div>
+
+      <div id="noteContainer" hidden>
+        <div class="note-head">
+          <input id="noteTitle" class="note-title" placeholder="Untitled" />
+          <div class="note-meta">
+            <input id="noteTags" class="note-tags" placeholder="tags (comma separated, e.g. work, ideas)" />
+            <span id="noteDates" class="muted"></span>
+            <button id="exportNoteBtn" class="icon-btn" title="Export as .md">&#11015;</button>
+            <button id="deleteNoteBtn" class="icon-btn danger" title="Delete note">&#128465;</button>
+          </div>
+        </div>
+        <div id="toolbar" class="toolbar">
+          <button data-act="bold" title="Bold (Ctrl+B)"><b>B</b></button>
+          <button data-act="italic" title="Italic (Ctrl+I)"><i>I</i></button>
+          <button data-act="strike" title="Strikethrough"><s>S</s></button>
+          <span class="sep"></span>
+          <button data-act="h1" title="Heading 1">H1</button>
+          <button data-act="h2" title="Heading 2">H2</button>
+          <button data-act="h3" title="Heading 3">H3</button>
+          <button data-act="h-up" title="Promote heading (decrease level)">&uarr;H</button>
+          <button data-act="h-down" title="Demote heading (increase level)">&darr;H</button>
+          <span class="sep"></span>
+          <button data-act="code" title="Inline code">&lt;/&gt;</button>
+          <button data-act="codeblock" title="Code block">{ }</button>
+          <button data-act="quote" title="Quote">&gt;</button>
+          <button data-act="ul" title="Bulleted list">&bull;</button>
+          <button data-act="ol" title="Numbered list">1.</button>
+          <button data-act="link" title="Link">&#128279;</button>
+          <span class="sep"></span>
+          <button id="previewToggle" title="Toggle preview">Preview</button>
+        </div>
+        <textarea id="editor" class="editor" spellcheck="true" placeholder="Start writing in markdown…"></textarea>
+        <div id="preview" class="preview markdown-body" hidden></div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Modals / toasts -->
+  <div id="modalRoot"></div>
+  <div id="toastRoot" class="toast-root"></div>
+
+  <!-- Admin panel (lazy loaded into modalRoot). -->
+  <template id="adminTpl">
+    <div class="modal">
+      <div class="modal-card">
+        <header><h2>Admin panel</h2><button class="close-x" data-close>&times;</button></header>
+        <div class="admin-body">
+          <h3>Pending accounts</h3>
+          <ul id="pendingList" class="user-list"></ul>
+          <h3>All accounts</h3>
+          <ul id="allUsersList" class="user-list"></ul>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <script>
+    // Configure marked as soon as it loads (deferred).
+    document.addEventListener('DOMContentLoaded', () => {
+      const tryInit = () => {
+        if (window.marked) {
+          window.marked.setOptions({ breaks: false, gfm: true });
+        }
+        if (window.DOMPurify) {
+          window.DOMPurify.setConfig({ ADD_ATTR: ['target', 'rel'] });
+        }
+      };
+      tryInit();
+      // marked/dompurify are deferred; retry on next tick.
+      setTimeout(tryInit, 0);
+    });
+  </script>
+</body>
+</html>
