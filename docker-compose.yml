@@ -4,24 +4,15 @@ services:
     container_name: jnote_backend
     hostname: jnote_backend
     restart: unless-stopped
+    # All knobs (JWT_SECRET, GOOGLE_*, RATE_LIMIT_*, etc.) are loaded from
+    # the root .env file via env_file. The .env.example documents them.
+    env_file: .env
+    # Only container-specific values that are NOT in .env, plus a fail-fast
+    # check on JWT_SECRET so the backend never boots with the dev fallback.
     environment:
       PORT: 3000
       DB_PATH: /data/jnote.sqlite
-      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
-      JWT_TTL: ${JWT_TTL:-604800}
-      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@jnote.local}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-http://localhost:8080/api/auth/google/callback}
-      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:8080}
-      COOKIE_SECURE: ${COOKIE_SECURE:-0}
-      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
-      PASSWORD_MIN_LENGTH: ${PASSWORD_MIN_LENGTH:-8}
-      RATE_LIMIT_LOGIN: ${RATE_LIMIT_LOGIN:-10}
-      RATE_LIMIT_REGISTER: ${RATE_LIMIT_REGISTER:-5}
-      RATE_LIMIT_IMPORT: ${RATE_LIMIT_IMPORT:-5}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env before starting}
     volumes:
       - jnote_data:/data
 
@@ -32,6 +23,9 @@ services:
     restart: unless-stopped
     depends_on:
       - jnote_backend
+    # Frontend is static — no env vars needed in the container.
+    # HOST_PORT is read directly from the shell env (populated by Compose
+    # from .env) for the host-side port mapping below.
     ports:
       - "${HOST_PORT:-8080}:80"
 
