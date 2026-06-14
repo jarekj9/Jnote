@@ -4,6 +4,7 @@
 import { api } from './api.js';
 import { state, setState, on, emit_ } from './state.js';
 import { openNote } from './editor.js';
+import { sanitizeHtml } from './markdown.js';
 import { toast } from './toast.js';
 
 let allFolders = []; // full list of folders for the user (re-fetched after changes)
@@ -209,7 +210,10 @@ function renderSearchResults() {
       snip.className = 'muted';
       snip.style.padding = '2px 28px 4px';
       snip.style.fontSize = '12px';
-      snip.innerHTML = r.snippet;
+      // FTS5 snippet() wraps matches in <mark> but otherwise emits the raw
+      // note text. Sanitize before innerHTML so a note containing
+      // <img onerror=...> can't run script via the sidebar.
+      snip.innerHTML = sanitizeHtml(r.snippet, ['mark']);
       root.appendChild(snip);
     }
   }

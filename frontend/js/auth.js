@@ -94,17 +94,4 @@ export function bindAuthForms() {
   document.getElementById('googleLogin').addEventListener('click', () => {
     location.href = '/api/auth/google';
   });
-
-  // Escape hatch: clear any stale session (e.g. after a pending account or
-  // admin disabled the user) and stay on the auth screen.
-  const switchLink = document.getElementById('switchAccount');
-  if (switchLink) {
-    switchLink.addEventListener('click', async (e) => {
-      e.preventDefault();
-      try { await logout(); } catch {}
-      document.querySelectorAll('input[type="password"]').forEach(i => i.value = '');
-      setFormMsg('login', '');
-      setFormMsg('register', '');
-    });
-  }
 }

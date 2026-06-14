@@ -15,6 +15,8 @@ export class StorageConnector {
   setUserStatus(id, status) { throw new Error('not implemented'); }
   setUserRole(id, role) { throw new Error('not implemented'); }
   setUserPassword(id, passwordHash) { throw new Error('not implemented'); }
+  clearUserPassword(id) { throw new Error('not implemented'); }
+  deleteUser(id) { throw new Error('not implemented'); }
   countAdmins() { throw new Error('not implemented'); }
 
   // ---------- folders ----------

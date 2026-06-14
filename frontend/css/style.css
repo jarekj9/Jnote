@@ -131,7 +131,6 @@ input, textarea, select { font: inherit; color: inherit; }
 .form-msg { font-size: 12px; min-height: 1em; }
 .form-msg.error { color: var(--danger); }
 .form-msg.success { color: var(--warn); }
-.switch-link { display: block; text-align: center; margin-top: 12px; font-size: 12px; }
 
 /* ---------------- App shell ---------------- */
 #app {
@@ -280,17 +279,23 @@ mark { background: var(--mark); color: inherit; padding: 0 2px; border-radius: 2
 .modal-card .admin-body { padding: 14px 16px; overflow: auto; }
 .user-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
 .user-list li {
-  display: flex; gap: 8px; align-items: center; justify-content: space-between;
-  padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px;
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px;
 }
-.user-list .meta { color: var(--text-muted); font-size: 12px; }
-.user-list .actions { display: flex; gap: 4px; flex-wrap: wrap; }
+.user-list .info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.user-list .info .meta { color: var(--text-muted); font-size: 12px; }
+.user-list .actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.user-list .actions .sep { width: 1px; height: 18px; background: var(--border); margin: 0 2px; }
 .user-list button {
-  height: 26px; padding: 0 8px; border-radius: 4px; border: 1px solid var(--border);
-  background: var(--bg); cursor: pointer;
+  height: 24px; padding: 0 8px; font-size: 12px;
+  border-radius: 4px; border: 1px solid var(--border);
+  background: var(--bg); cursor: pointer; white-space: nowrap;
 }
+.user-list button:hover { background: var(--bg-elev-2); }
 .user-list button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
-.user-list button.danger { color: var(--danger); }
+.user-list button.primary:hover { filter: brightness(1.08); }
+.user-list button.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 30%, var(--border)); }
+.user-list button.danger:hover { background: color-mix(in srgb, var(--danger) 10%, var(--bg)); }
 
 .toast-root {
   position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 100;

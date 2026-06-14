@@ -1,11 +1,21 @@
 import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import rateLimit from 'express-rate-limit';
 import { config } from './config.js';
 import { getStorage } from './storage/index.js';
 import { db } from './db.js';
+import {
+  validateUsername,
+  validateEmail,
+  validatePassword,
+} from './validation.js';
 
 const COOKIE_NAME = 'jnote_token';
+
+// Dummy bcrypt hash used to flatten login timing when the user does not
+// exist. Pre-computed once at module load.
+const DUMMY_HASH = bcrypt.hashSync('not-a-real-password-just-for-timing', 10);
 
 export function hashPassword(plain) {
   return bcrypt.hashSync(plain, 10);
@@ -29,7 +39,7 @@ function setAuthCookie(res, token) {
   res.cookie(COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: false, // set true behind HTTPS
+    secure: config.cookieSecure,   // set COOKIE_SECURE=1 behind HTTPS
     path: '/',
     maxAge: config.jwtTtlSeconds * 1000,
   });
@@ -58,31 +68,80 @@ function publicUser(u) {
   return { id: u.id, username: u.username, email: u.email, role: u.role, status: u.status };
 }
 
+// Rate limiters — applied to the relevant routes. max=0 disables.
+function makeLimiter(name, def) {
+  if (!def.max) return (req, _res, next) => next();
+  return rateLimit({
+    windowMs: def.windowMs,
+    max: def.max,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'too many requests, try again later' },
+  });
+}
+
+const loginLimiter    = makeLimiter('login',    config.rateLimit.login);
+const registerLimiter = makeLimiter('register', config.rateLimit.register);
+
 // ---------- routes ----------
 export function authRoutes(app) {
   const storage = getStorage();
 
-  app.post('/api/auth/register', (req, res) => {
+  // Registration: uniform response — does not reveal whether the username
+  // or email is already taken. Validation errors are still surfaced so the
+  // user can fix them.
+  app.post('/api/auth/register', registerLimiter, (req, res) => {
     const { username, email, password } = req.body || {};
-    if (!username || !password) return res.status(400).json({ error: 'username and password required' });
-    if (storage.getUserByUsername(username)) return res.status(409).json({ error: 'username taken' });
-    if (email && storage.getUserByEmail(email)) return res.status(409).json({ error: 'email taken' });
-    const user = storage.createUser({
-      username,
-      email: email || null,
-      passwordHash: hashPassword(password),
-      status: 'pending',
-    });
-    res.status(201).json({ user: publicUser(user), message: 'awaiting admin approval' });
+    const GENERIC = { message: 'if the details are valid, your account is awaiting admin approval' };
+
+    const u = validateUsername(username);
+    if (u) return res.status(400).json({ error: u });
+    const e = email ? validateEmail(email) : null;
+    if (e) return res.status(400).json({ error: e });
+    const p = validatePassword(password, config.passwordMinLength);
+    if (p) return res.status(400).json({ error: p });
+
+    // Silent on duplicates — prevents account enumeration.
+    if (storage.getUserByUsername(username)) return res.status(200).json(GENERIC);
+    if (email && storage.getUserByEmail(email)) return res.status(200).json(GENERIC);
+
+    try {
+      storage.createUser({
+        username,
+        email: email || null,
+        passwordHash: hashPassword(password),
+        status: 'pending',
+      });
+    } catch (err) {
+      return res.status(500).json({ error: 'registration failed' });
+    }
+    return res.status(200).json(GENERIC);
   });
 
-  app.post('/api/auth/login', (req, res) => {
+  // Login: uniform response + uniform timing (dummy bcrypt on missing users).
+  app.post('/api/auth/login', loginLimiter, (req, res) => {
     const { username, password } = req.body || {};
-    const user = username ? storage.getUserByUsername(username) || storage.getUserByEmail(username) : null;
-    if (!user || !user.password_hash || !verifyPassword(password || '', user.password_hash)) {
+    if (typeof username !== 'string' || typeof password !== 'string') {
+      return res.status(400).json({ error: 'invalid input' });
+    }
+    if (username.length > 254 || password.length > 1000) {
+      return res.status(400).json({ error: 'invalid input' });
+    }
+
+    const user = storage.getUserByUsername(username) || storage.getUserByEmail(username);
+
+    if (!user) {
+      // Flatten timing — run a real bcrypt against the dummy hash.
+      bcrypt.compareSync(password, DUMMY_HASH);
       return res.status(401).json({ error: 'invalid credentials' });
     }
-    if (user.status !== 'active') return res.status(403).json({ error: 'account not active' });
+    if (!user.password_hash || !bcrypt.compareSync(password, user.password_hash)) {
+      return res.status(401).json({ error: 'invalid credentials' });
+    }
+    if (user.status !== 'active') {
+      // Don't reveal that the account exists but is pending/disabled.
+      return res.status(401).json({ error: 'invalid credentials' });
+    }
     setAuthCookie(res, signToken(user));
     res.json({ user: publicUser(user) });
   });
@@ -93,8 +152,6 @@ export function authRoutes(app) {
     const token = req.cookies?.[COOKIE_NAME];
     const payload = token ? verifyToken(token) : null;
     const user = payload ? storage.getUserById(payload.sub) : null;
-    // Treat any non-active user (pending / disabled) as logged out and clear
-    // their stale cookie so the frontend doesn't get stuck on the app shell.
     if (!user || user.status !== 'active') {
       clearAuthCookie(res);
       return res.json({ user: null, googleEnabled: config.google.enabled });
@@ -126,7 +183,6 @@ export function authRoutes(app) {
       if (!code || !state || state !== expected) return res.redirect('/?oauth_error=bad_state');
 
       try {
-        // Exchange code for tokens
         const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -147,19 +203,32 @@ export function authRoutes(app) {
         if (!profileRes.ok) return res.redirect('/?oauth_error=profile');
         const profile = await profileRes.json();
 
+        // SECURITY: do NOT link by email. A Google user always gets a brand
+        // new pending account; the admin must approve it. This prevents the
+        // "attacker registers victim's email → admin approves → attacker
+        // signs in with Google and steals the account" takeover.
         let user = storage.getUserByGoogleId(profile.id);
-        if (!user && profile.email) user = storage.getUserByEmail(profile.email);
-
-        if (user) {
-          // Link google id if missing on an existing account.
-          if (!user.google_id) db.prepare('UPDATE users SET google_id = ? WHERE id = ?').run(profile.id, user.id);
-        } else {
-          user = storage.createUser({
-            username: profile.email?.split('@')[0] || `user${Date.now()}`,
-            email: profile.email,
-            googleId: profile.id,
-            status: 'pending',
-          });
+        if (!user) {
+          // Derive a unique, sanitized username from the email local part.
+          const base = (profile.email?.split('@')[0] || 'user')
+            .toLowerCase()
+            .replace(/[^a-z0-9_-]/g, '_')
+            .slice(0, 45) || 'user';
+          let username = base;
+          for (let i = 1; storage.getUserByUsername(username); i++) {
+            username = `${base}_${i}`.slice(0, 50);
+            if (i > 9999) return res.redirect('/?oauth_error=server');  // give up
+          }
+          try {
+            user = storage.createUser({
+              username,
+              email: profile.email || null,
+              googleId: profile.id,
+              status: 'pending',
+            });
+          } catch (e) {
+            return res.redirect('/?oauth_error=server');
+          }
         }
 
         if (user.status !== 'active') return res.redirect('/?oauth_error=pending');

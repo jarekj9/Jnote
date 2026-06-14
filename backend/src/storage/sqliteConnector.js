@@ -33,6 +33,15 @@ export class SqliteConnector extends StorageConnector {
   setUserStatus(id, status) { db.prepare('UPDATE users SET status = ? WHERE id = ?').run(status, id); return this.getUserById(id); }
   setUserRole(id, role) { db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, id); return this.getUserById(id); }
   setUserPassword(id, passwordHash) { db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, id); }
+  clearUserPassword(id) { db.prepare('UPDATE users SET password_hash = NULL WHERE id = ?').run(id); }
+  deleteUser(id) {
+    // ON DELETE CASCADE on folders/note_tags and ON DELETE CASCADE on
+    // tags/note_tags clean up all owned data. notes.folder_id has
+    // ON DELETE SET NULL, so a note whose folder is deleted survives as
+    // a root-level note — except the note itself is removed by the
+    // user_id CASCADE, so this is moot.
+    db.prepare('DELETE FROM users WHERE id = ?').run(id);
+  }
   countAdmins() {
     const row = db.prepare("SELECT COUNT(*) AS c FROM users WHERE role = 'admin' AND status = 'active'").get();
     return row.c;
