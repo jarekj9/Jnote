@@ -1,0 +1,27 @@
+# Build context exclusion for the Docker images. Speeds up builds by
+# keeping the build context small. Each Dockerfile only COPYs the
+# directories it needs; the rest is just upload overhead.
+
+# VCS / CI
+.git
+.github
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Node (in case anyone ever commits node_modules by accident)
+node_modules
+
+# Env files — never bake secrets into an image
+.env
+.env.*
+
+# Docs / examples — not needed inside the image
+README.md
+AGENTS.md
+app_specification.md
+authelia/

@@ -4,6 +4,17 @@ import { config } from '../config.js';
 import { getStorage } from '../storage/index.js';
 import { validatePassword } from '../validation.js';
 
+// Map an OIDC issuer URL to the configured provider's display name
+// (e.g. "https://accounts.google.com" → "Google"). Falls back to the
+// raw issuer if no provider matches.
+function oidcLabel(iss) {
+  if (!iss) return null;
+  for (const p of Object.values(config.oidc.providers)) {
+    if (p.issuer === iss) return p.name;
+  }
+  return iss;
+}
+
 function publicUser(u) {
   return {
     id: u.id,
@@ -12,6 +23,8 @@ function publicUser(u) {
     role: u.role,
     status: u.status,
     has_password: !!u.password_hash,
+    oidc_issuer: u.oidc_iss || null,
+    oidc_label: oidcLabel(u.oidc_iss),
     created_at: u.created_at,
   };
 }
@@ -95,9 +108,9 @@ export function userRoutes(app) {
     if (!u) return res.status(404).json({ error: 'not found' });
     if (!u.password_hash) return res.status(400).json({ error: 'user has no password to clear' });
     // Safety: don't let the only active admin clear their own password
-    // unless they have Google linked, to avoid lock-out.
-    if (id === req.user.id && !u.google_id) {
-      return res.status(400).json({ error: 'cannot clear your own password without a Google link' });
+    // unless they have at least one OIDC identity linked, to avoid lock-out.
+    if (id === req.user.id && !u.oidc_iss) {
+      return res.status(400).json({ error: 'cannot clear your own password without an OIDC identity linked' });
     }
     storage.clearUserPassword(id);
     res.json({ ok: true });

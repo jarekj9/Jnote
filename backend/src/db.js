@@ -17,7 +17,9 @@ CREATE TABLE IF NOT EXISTS users (
   username      TEXT UNIQUE NOT NULL,
   email         TEXT UNIQUE,
   password_hash TEXT,
-  google_id     TEXT UNIQUE,
+  google_id     TEXT UNIQUE,   -- legacy, kept for one-time backfill into oidc_iss/oidc_sub
+  oidc_iss      TEXT,          -- OIDC issuer URL (e.g. https://accounts.google.com)
+  oidc_sub      TEXT,          -- OIDC subject claim
   role          TEXT NOT NULL DEFAULT 'user',   -- 'user' | 'admin'
   status        TEXT NOT NULL DEFAULT 'pending',-- 'pending' | 'active' | 'disabled'
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
@@ -95,5 +97,24 @@ END;
 `;
 
 db.exec(SCHEMA);
+
+// --- Migrations for existing databases ---------------------------------
+// Add the OIDC columns to pre-OIDC users tables. Idempotent: ALTER TABLE
+// throws on duplicate column, which we ignore.
+try { db.exec('ALTER TABLE users ADD COLUMN oidc_iss TEXT'); } catch (e) { /* already there */ }
+try { db.exec('ALTER TABLE users ADD COLUMN oidc_sub TEXT'); } catch (e) { /* already there */ }
+
+// One-time backfill: any user with google_id gets migrated to
+// (oidc_iss='https://accounts.google.com', oidc_sub=google_id).
+// Idempotent and safe: only acts on rows that don't yet have an OIDC link.
+db.exec(`
+  UPDATE users
+  SET oidc_iss = 'https://accounts.google.com', oidc_sub = google_id
+  WHERE google_id IS NOT NULL AND oidc_sub IS NULL
+`);
+
+// One OIDC identity per (iss, sub). Partial index — only enforced for rows
+// that have an OIDC link; pure password users are unaffected.
+db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_oidc ON users(oidc_iss, oidc_sub) WHERE oidc_iss IS NOT NULL`);
 
 // One-time index warmup is implicit on first INSERT/UPDATE.

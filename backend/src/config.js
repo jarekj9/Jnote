@@ -8,6 +8,48 @@ function bool(v, def = false) {
   return v === '1' || v.toLowerCase() === 'true';
 }
 
+// Build the OIDC provider list from env vars. Each provider is a config
+// entry; the callback URLs are derived from PUBLIC_ORIGIN. To add a new
+// provider, add an entry here and the matching env vars.
+function parseOidcProviders() {
+  const providers = {};
+  const origin = (env.PUBLIC_ORIGIN || 'http://localhost:8080').replace(/\/+$/, '');
+
+  // Google
+  if (env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) {
+    providers.google = {
+      id: 'google',
+      name: 'Google',
+      issuer: 'https://accounts.google.com',
+      clientId: env.GOOGLE_CLIENT_ID,
+      clientSecret: env.GOOGLE_CLIENT_SECRET,
+      discoveryUrl: 'https://accounts.google.com/.well-known/openid-configuration',
+      callbackUrl: `${origin}/api/auth/oidc/google/callback`,
+      scopes: 'openid email profile',
+      authParams: { prompt: 'select_account', access_type: 'online' },
+    };
+  }
+
+  // Authelia — operator provides the issuer URL (base URL of the Authelia
+  // instance), plus a client id/secret they generated there.
+  if (env.AUTHELIA_CLIENT_ID && env.AUTHELIA_CLIENT_SECRET && env.AUTHELIA_ISSUER) {
+    const issuer = env.AUTHELIA_ISSUER.replace(/\/+$/, '');
+    providers.authelia = {
+      id: 'authelia',
+      name: env.AUTHELIA_NAME || 'Authelia',
+      issuer,
+      clientId: env.AUTHELIA_CLIENT_ID,
+      clientSecret: env.AUTHELIA_CLIENT_SECRET,
+      discoveryUrl: `${issuer}/.well-known/openid-configuration`,
+      callbackUrl: `${origin}/api/auth/oidc/authelia/callback`,
+      scopes: 'openid email profile',
+      authParams: {},
+    };
+  }
+
+  return providers;
+}
+
 export const config = {
   port: Number(env.PORT || 3000),
   dbPath: env.DB_PATH || path.resolve(process.cwd(), 'data', 'jnote.sqlite'),
@@ -31,12 +73,9 @@ export const config = {
     password: env.ADMIN_PASSWORD || '',
   },
 
-  google: {
-    // Truthy check, not bool() — client id/secret are long opaque strings,
-    // not the "0"/"1"/"true"/"false" values that bool() understands.
-    enabled: !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),
-    clientId: env.GOOGLE_CLIENT_ID || '',
-    clientSecret: env.GOOGLE_CLIENT_SECRET || '',
-    callbackUrl: env.GOOGLE_CALLBACK_URL || 'http://localhost:8080/api/auth/google/callback',
+  // Generic OIDC client list. The login UI and /api/auth/me list all
+  // providers from here. Add a new provider by extending parseOidcProviders().
+  oidc: {
+    providers: parseOidcProviders(),
   },
 };

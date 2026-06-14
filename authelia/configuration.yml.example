@@ -1,0 +1,88 @@
+# Authelia configuration for use as an OIDC IdP for Jnote.
+#
+# Copy this file to configuration.yml in your Authelia config directory
+# (e.g. /config/authelia/configuration.yml) and edit the placeholders below.
+# This is a minimal but complete example — Authelia's defaults fill in the
+# rest. For the full schema see https://www.authelia.com/integration/proxies/
+
+server:
+  address: "0.0.0.0:9091"
+  # In production, run Authelia behind a reverse proxy (nginx, Traefik,
+  # Caddy) that terminates TLS. The PUBLIC_ORIGIN you set in Jnote's
+  # .env must match the externally-visible https URL of Authelia.
+
+log:
+  level: info
+
+# REQUIRED: random 64-byte base64 secret. Generate with:
+#   docker run --rm authelia/authelia:latest authelia crypto rand --length 64
+#   # or:
+#   openssl rand -base64 64
+jwt_secret: "PLEASE_REPLACE_WITH_RANDOM_64_BYTE_BASE64_SECRET"
+
+# Where Authelia's user database lives. This is a simple flat-file
+# backend — fine for self-hosted single-org setups. For larger installs
+# use the LDAP backend (see Authelia docs).
+authentication_backend:
+  file:
+    path: /config/users.yml
+  password_reset:
+    disable: true
+
+# Session storage. SQLite is fine for a single Authelia instance; switch
+# to redis/postgres if you scale horizontally.
+session:
+  cookies:
+    - domain: "authelia.example.com"            # ← your Authelia public hostname (no port)
+      authelia_url: "https://authelia.example.com"
+      default_redirection_url: "https://jnote.example.com"
+  storage:
+    local:
+      path: /config/sessions.db
+
+storage:
+  local:
+    path: /config/db.sqlite
+
+# A no-op notifier. Authelia needs one configured but for headless setups
+# the filesystem notifier just writes events to a file.
+notifier:
+  filesystem:
+    filename: /config/notifier.txt
+
+# The OIDC client definition Jnote logs in with. The id + secret here
+# must match AUTHELIA_CLIENT_ID + AUTHELIA_CLIENT_SECRET in Jnote's .env.
+# The redirect_uri MUST match ${AUTHELIA_ISSUER}/api/auth/oidc/authelia/callback
+# (Authelia doesn't auto-derive it from the client_id).
+identity_providers:
+  oidc:
+    clients:
+      - id: jnote                                # ← AUTHELIA_CLIENT_ID
+        secret: "jnote-shared-secret-change-me"  # ← AUTHELIA_CLIENT_SECRET
+        public: false
+        # one_factor: just username + password. Use two_factor if you also
+        # want TOTP/WebAuthn at the Authelia step.
+        authorization_policy: one_factor
+        redirect_uris:
+          - "https://jnote.example.com/api/auth/oidc/authelia/callback"
+        scopes:
+          - openid
+          - email
+          - profile
+        grant_types:
+          - authorization_code
+        response_types:
+          - code
+        # The signing alg used to sign ID tokens. RS256 is the OIDC default.
+        token_signed_response_alg: RS256
+
+# Access control: which requests need authentication. Here we require
+# any request to the jnote.example.com domain to be authenticated.
+# Jnote does its own per-route auth via requireAuth, so this is
+# defence-in-depth: Authelia only challenges the user before the OIDC
+# dance starts.
+access_control:
+  default_policy: deny
+  rules:
+    - domain: "jnote.example.com"
+      policy: one_factor

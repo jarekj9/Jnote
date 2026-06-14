@@ -17,17 +17,19 @@ const SORT_SQL = {
 
 export class SqliteConnector extends StorageConnector {
   // -------- users --------
-  createUser({ username, email, passwordHash = null, googleId = null, role = 'user', status = 'pending' }) {
+  createUser({ username, email, passwordHash = null, oidcIss = null, oidcSub = null, role = 'user', status = 'pending' }) {
     const info = db.prepare(`
-      INSERT INTO users (username, email, password_hash, google_id, role, status)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(username, email ?? null, passwordHash, googleId, role, status);
+      INSERT INTO users (username, email, password_hash, oidc_iss, oidc_sub, role, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(username, email ?? null, passwordHash, oidcIss, oidcSub, role, status);
     return this.getUserById(info.lastInsertRowid);
   }
   getUserById(id) { return db.prepare('SELECT * FROM users WHERE id = ?').get(id) || null; }
   getUserByEmail(email) { return db.prepare('SELECT * FROM users WHERE email = ?').get(email) || null; }
   getUserByUsername(username) { return db.prepare('SELECT * FROM users WHERE username = ?').get(username) || null; }
-  getUserByGoogleId(googleId) { return db.prepare('SELECT * FROM users WHERE google_id = ?').get(googleId) || null; }
+  getUserByOidc(iss, sub) {
+    return db.prepare('SELECT * FROM users WHERE oidc_iss = ? AND oidc_sub = ?').get(iss, sub) || null;
+  }
   listUsers() { return db.prepare('SELECT * FROM users ORDER BY created_at DESC').all(); }
   listPendingUsers() { return db.prepare("SELECT * FROM users WHERE status = 'pending' ORDER BY created_at ASC").all(); }
   setUserStatus(id, status) { db.prepare('UPDATE users SET status = ? WHERE id = ?').run(status, id); return this.getUserById(id); }

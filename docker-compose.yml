@@ -4,8 +4,8 @@ services:
     container_name: jnote_backend
     hostname: jnote_backend
     restart: unless-stopped
-    # All knobs (JWT_SECRET, GOOGLE_*, RATE_LIMIT_*, etc.) are loaded from
-    # the root .env file via env_file. The .env.example documents them.
+    # All knobs (JWT_SECRET, GOOGLE_*, AUTHELIA_*, RATE_LIMIT_*, etc.) are loaded
+    # from the root .env file via env_file. The .env.example documents them.
     env_file: .env
     # Only container-specific values that are NOT in .env
     environment:

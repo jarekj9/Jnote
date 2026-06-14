@@ -4,7 +4,7 @@ import { enterApp } from './app.js';
 
 export async function fetchMe() {
   const r = await api.get('/api/auth/me');
-  setState({ user: r.user, googleEnabled: r.googleEnabled });
+  setState({ user: r.user, providers: r.providers || [] });
   return r.user;
 }
 
@@ -26,18 +26,40 @@ export function renderAuth() {
   document.getElementById('topbar').hidden = true;
   document.getElementById('app').hidden = true;
 
-  document.getElementById('googleLogin').hidden = !state.googleEnabled;
+  // Render one "Continue with …" button per enabled OIDC provider.
+  const container = document.getElementById('oidcButtons');
+  if (container) {
+    container.innerHTML = '';
+    for (const p of (state.providers || [])) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'oidc-btn';
+      btn.textContent = `Continue with ${p.name}`;
+      btn.addEventListener('click', () => { location.href = `/api/auth/oidc/${p.id}`; });
+      container.appendChild(btn);
+    }
+  }
+
+  // OIDC error coming back from a failed callback (?oidc_error=…).
   const params = new URLSearchParams(location.search);
-  const oauthErr = params.get('oauth_error');
+  const oauthErr = params.get('oidc_error');
   if (oauthErr) {
+    const provider = params.get('provider') || '';
+    const providerName = (state.providers || []).find(p => p.id === provider)?.name || provider || 'Identity provider';
     const messages = {
-      pending: 'Your Google account is awaiting admin approval.',
-      bad_state: 'OAuth state mismatch. Try again.',
-      token: 'Google login failed (token exchange).',
-      profile: 'Google login failed (profile).',
-      server: 'Google login failed (server error).',
+      pending: `Your ${providerName} account is awaiting admin approval.`,
+      bad_state: 'Login state mismatch. Try again.',
+      token: 'Token exchange with the identity provider failed.',
+      profile: 'Profile fetch from the identity provider failed.',
+      no_sub: 'Identity provider response was missing the required subject identifier.',
+      server: 'Login failed due to a server error.',
     };
-    setFormMsg('login', messages[oauthErr] || 'OAuth error', oauthErr === 'pending' ? 'success' : 'error');
+    if (oauthErr.startsWith('discovery_')) {
+      const id = oauthErr.slice('discovery_'.length);
+      setFormMsg('login', `Could not reach the ${id} identity provider (OIDC discovery failed).`, 'error');
+    } else {
+      setFormMsg('login', messages[oauthErr] || `Login failed (${oauthErr})`, oauthErr === 'pending' ? 'success' : 'error');
+    }
     history.replaceState({}, '', '/');
   }
 }
@@ -89,9 +111,5 @@ export function bindAuthForms() {
     } catch (err) {
       setFormMsg('register', err.message, 'error');
     }
-  });
-
-  document.getElementById('googleLogin').addEventListener('click', () => {
-    location.href = '/api/auth/google';
   });
 }

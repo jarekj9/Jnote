@@ -124,10 +124,12 @@ input, textarea, select { font: inherit; color: inherit; }
   height: 34px; border-radius: 6px; border: 0; cursor: pointer;
   background: var(--accent); color: var(--accent-text); font-weight: 600;
 }
-.google-btn {
+.google-btn,
+.oidc-btn {
   height: 34px; border-radius: 6px; border: 1px solid var(--border);
-  background: var(--bg); cursor: pointer;
+  background: var(--bg); cursor: pointer; margin-top: 6px;
 }
+.oidc-buttons { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
 .form-msg { font-size: 12px; min-height: 1em; }
 .form-msg.error { color: var(--danger); }
 .form-msg.success { color: var(--warn); }

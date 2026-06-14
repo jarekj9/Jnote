@@ -108,6 +108,27 @@ function publicUser(u) {
   return { id: u.id, username: u.username, email: u.email, role: u.role, status: u.status };
 }
 
+// ---- OIDC helpers --------------------------------------------------------
+// OIDC discovery documents (authorization_endpoint, token_endpoint,
+// userinfo_endpoint, ...) are fetched once per process and cached.
+const discoveryCache = new Map();
+async function getDiscovery(provider) {
+  if (discoveryCache.has(provider.id)) return discoveryCache.get(provider.id);
+  const res = await fetch(provider.discoveryUrl);
+  if (!res.ok) throw new Error(`OIDC discovery failed for ${provider.id} (HTTP ${res.status})`);
+  const doc = await res.json();
+  discoveryCache.set(provider.id, doc);
+  return doc;
+}
+
+function oidcStateCookieName(providerId) {
+  return `jnote_oidc_state_${providerId.replace(/[^a-z0-9]/gi, '_')}`;
+}
+
+function listEnabledProviders() {
+  return Object.values(config.oidc.providers).map(p => ({ id: p.id, name: p.name }));
+}
+
 // Rate limiters — applied to the relevant routes. max=0 disables.
 function makeLimiter(name, def) {
   if (!def.max) return (req, _res, next) => next();
@@ -245,62 +266,81 @@ export function authRoutes(app) {
     const user = payload ? storage.getUserById(payload.sub) : null;
     if (!user || user.status !== 'active') {
       clearAuthCookie(res);
-      return res.json({ user: null, googleEnabled: config.google.enabled });
+      return res.json({ user: null, providers: listEnabledProviders() });
     }
-    res.json({ user: publicUser(user), googleEnabled: config.google.enabled });
+    res.json({ user: publicUser(user), providers: listEnabledProviders() });
   });
 
-  // ---- Google OAuth (only if configured) ----
-  if (config.google.enabled) {
-    app.get('/api/auth/google', (req, res) => {
+  // ---- Generic OIDC client (per enabled provider in config.oidc.providers) ----
+  // Each provider gets two routes: /api/auth/oidc/<id> (start the flow)
+  // and /api/auth/oidc/<id>/callback. The provider's discovery doc is fetched
+  // and cached, then the standard Authorization Code flow runs. We never
+  // link by email — a new OIDC login always creates a fresh pending user.
+  for (const provider of Object.values(config.oidc.providers)) {
+    // Start: build the authorize URL, set state cookie, redirect.
+    app.get(`/api/auth/oidc/${provider.id}`, (req, res) => {
       const state = crypto.randomBytes(16).toString('hex');
-      res.cookie('jnote_oauth_state', state, { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 600000 });
-      const params = new URLSearchParams({
-        client_id: config.google.clientId,
-        redirect_uri: config.google.callbackUrl,
-        response_type: 'code',
-        scope: 'openid email profile',
-        state,
-        access_type: 'online',
-        prompt: 'select_account',
+      res.cookie(oidcStateCookieName(provider.id), state, {
+        httpOnly: true, sameSite: 'lax', path: '/', maxAge: 600000,
       });
-      res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+      getDiscovery(provider).then(discovery => {
+        const url = new URL(discovery.authorization_endpoint);
+        url.searchParams.set('client_id', provider.clientId);
+        url.searchParams.set('redirect_uri', provider.callbackUrl);
+        url.searchParams.set('response_type', 'code');
+        url.searchParams.set('scope', provider.scopes);
+        url.searchParams.set('state', state);
+        for (const [k, v] of Object.entries(provider.authParams || {})) {
+          url.searchParams.set(k, v);
+        }
+        res.redirect(url.toString());
+      }).catch(() => {
+        res.redirect(`/?oidc_error=discovery_${encodeURIComponent(provider.id)}`);
+      });
     });
 
-    app.get('/api/auth/google/callback', async (req, res) => {
+    // Callback: exchange code, fetch userinfo, look up / create user.
+    app.get(`/api/auth/oidc/${provider.id}/callback`, async (req, res) => {
       const { code, state } = req.query;
-      const expected = req.cookies?.jnote_oauth_state;
-      res.clearCookie('jnote_oauth_state', { path: '/' });
-      if (!code || !state || state !== expected) return res.redirect('/?oauth_error=bad_state');
+      const expected = req.cookies?.[oidcStateCookieName(provider.id)];
+      res.clearCookie(oidcStateCookieName(provider.id), { path: '/' });
+      if (!code || !state || state !== expected) {
+        return res.redirect('/?oidc_error=bad_state');
+      }
 
       try {
-        const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+        const discovery = await getDiscovery(provider);
+
+        const tokenRes = await fetch(discovery.token_endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           body: new URLSearchParams({
             code: String(code),
-            client_id: config.google.clientId,
-            client_secret: config.google.clientSecret,
-            redirect_uri: config.google.callbackUrl,
+            client_id: provider.clientId,
+            client_secret: provider.clientSecret,
+            redirect_uri: provider.callbackUrl,
             grant_type: 'authorization_code',
           }),
         });
-        if (!tokenRes.ok) return res.redirect('/?oauth_error=token');
+        if (!tokenRes.ok) return res.redirect('/?oidc_error=token');
         const tokens = await tokenRes.json();
 
-        const profileRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+        const profileRes = await fetch(discovery.userinfo_endpoint, {
           headers: { Authorization: `Bearer ${tokens.access_token}` },
         });
-        if (!profileRes.ok) return res.redirect('/?oauth_error=profile');
+        if (!profileRes.ok) return res.redirect('/?oidc_error=profile');
         const profile = await profileRes.json();
 
-        // SECURITY: do NOT link by email. A Google user always gets a brand
-        // new pending account; the admin must approve it. This prevents the
-        // "attacker registers victim's email → admin approves → attacker
-        // signs in with Google and steals the account" takeover.
-        let user = storage.getUserByGoogleId(profile.id);
+        const sub = profile.sub;
+        if (!sub) return res.redirect('/?oidc_error=no_sub');
+        // We trust the configured issuer — discovery + token exchange were
+        // already against it, so iss here is necessarily that issuer.
+        const iss = provider.issuer;
+
+        // SECURITY: do NOT link by email. Same posture as the old Google
+        // flow — a fresh OIDC login always gets a brand-new pending user.
+        let user = storage.getUserByOidc(iss, sub);
         if (!user) {
-          // Derive a unique, sanitized username from the email local part.
           const base = (profile.email?.split('@')[0] || 'user')
             .toLowerCase()
             .replace(/[^a-z0-9_-]/g, '_')
@@ -308,25 +348,28 @@ export function authRoutes(app) {
           let username = base;
           for (let i = 1; storage.getUserByUsername(username); i++) {
             username = `${base}_${i}`.slice(0, 50);
-            if (i > 9999) return res.redirect('/?oauth_error=server');  // give up
+            if (i > 9999) return res.redirect('/?oidc_error=server');
           }
           try {
             user = storage.createUser({
               username,
               email: profile.email || null,
-              googleId: profile.id,
+              oidcIss: iss,
+              oidcSub: sub,
               status: 'pending',
             });
           } catch (e) {
-            return res.redirect('/?oauth_error=server');
+            return res.redirect('/?oidc_error=server');
           }
         }
 
-        if (user.status !== 'active') return res.redirect('/?oauth_error=pending');
+        if (user.status !== 'active') {
+          return res.redirect(`/?oidc_error=pending&provider=${encodeURIComponent(provider.id)}`);
+        }
         setAuthCookie(res, signToken(user));
         res.redirect('/');
       } catch (e) {
-        res.redirect('/?oauth_error=server');
+        res.redirect('/?oidc_error=server');
       }
     });
   }

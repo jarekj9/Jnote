@@ -42,7 +42,7 @@ Persistence details: `StorageConnector` in `backend/src/storage/connector.js` is
 - `bootstrapAdmin()` is one-time — only creates the admin if missing; it does **not** reset the password on subsequent boots.
 - `JWT_SECRET` has a dev fallback if unset. **Do not add a startup validator** — the human removed it intentionally.
 - Register/login use uniform responses + dummy bcrypt for timing. Don't reintroduce per-failure leaks (e.g. `"username taken"`, `"account not active"`) — all collapse to `401 {error: "invalid credentials"}`.
-- Google OAuth does **not** link by email — always creates a brand-new pending user with a derived username; admin must approve. This closes the email-takeover path.
+- Google / OIDC OAuth does **not** link by email — always creates a brand-new pending user with a derived username; admin must approve. This closes the email-takeover path. The OIDC flow is generic (`config.oidc.providers`); add a new provider by extending `parseOidcProviders()` in `src/config.js`.
 - `requireAuth` is dual-mode: cookie JWT for the browser, `Authorization: Bearer jnote_pat_…` for programmatic clients. An invalid Bearer header fails closed (no fall-through to the cookie). See `src/auth.js`.
 - FTS5 queries go through `sanitizeFtsQuery` in `sqliteConnector.js`. Don't bypass.
 - Import (.zip) validates every entry path (no absolute, no `..`, no control chars, length cap). Skipped entries are reported as `skipped` in the response.

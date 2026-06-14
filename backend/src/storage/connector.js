@@ -3,13 +3,13 @@
 // and register it in storage/index.js. Keep the surface small and stable.
 export class StorageConnector {
   // ---------- users ----------
-  createUser({ username, email, passwordHash, googleId, role = 'user', status = 'pending' }) {
+  createUser({ username, email, passwordHash = null, oidcIss = null, oidcSub = null, role = 'user', status = 'pending' }) {
     throw new Error('not implemented');
   }
   getUserById(id) { throw new Error('not implemented'); }
   getUserByEmail(email) { throw new Error('not implemented'); }
   getUserByUsername(username) { throw new Error('not implemented'); }
-  getUserByGoogleId(googleId) { throw new Error('not implemented'); }
+  getUserByOidc(iss, sub) { throw new Error('not implemented'); }
   listUsers() { throw new Error('not implemented'); }
   listPendingUsers() { throw new Error('not implemented'); }
   setUserStatus(id, status) { throw new Error('not implemented'); }

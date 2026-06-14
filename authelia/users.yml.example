@@ -1,0 +1,24 @@
+# Authelia user database (file backend).
+#
+# Copy this file to users.yml next to your configuration.yml. Each user
+# needs a bcrypt- or argon2-hashed password. Generate a hash with:
+#
+#   docker run --rm authelia/authelia:latest \
+#     authelia crypto hash generate argon2 --password 'yourpassword'
+#
+# Or for an existing bcrypt hash (cheaper but less recommended):
+#
+#   docker run --rm authelia/authelia:latest \
+#     authelia crypto hash generate bcrypt --password 'yourpassword'
+#
+# Then paste the full hash (starting with $argon2id$ or $2b$) below.
+
+users:
+  jane:
+    displayname: "Jane Doe"
+    # argon2id hash of the password "correct horse battery staple"
+    # GENERATE YOUR OWN before deploying:
+    #   docker run --rm authelia/authelia:latest \
+    #     authelia crypto hash generate argon2 --password 'yourpassword'
+    password: "$argon2id$v=19$m=65536,t=1,p=8$REPLACE_WITH_YOUR_GENERATED_HASH$"
+    email: jane@example.com

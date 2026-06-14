@@ -44,4 +44,5 @@ Features requested after the initial spec:
 
 - **Programmatic API via personal access tokens** — `Authorization: Bearer jnote_pat_…` works alongside the cookie session. Mint from the user menu → API tokens.
 - **Admin user management** — disable, enable, delete accounts; set or clear a user's password.
+- **Generic OIDC support** — any OIDC provider (Authelia, Authentik, Keycloak, etc.) pluggable alongside Google. Configure via `AUTHELIA_*` env vars; add more in `parseOidcProviders()` in `src/config.js`.
 - **Tag search shortcuts** — typing `#foo` or `tag:foo` filters by tag.
