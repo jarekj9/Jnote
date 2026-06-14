@@ -7,8 +7,7 @@ services:
     # All knobs (JWT_SECRET, GOOGLE_*, RATE_LIMIT_*, etc.) are loaded from
     # the root .env file via env_file. The .env.example documents them.
     env_file: .env
-    # Only container-specific values that are NOT in .env, plus a fail-fast
-    # check on JWT_SECRET so the backend never boots with the dev fallback.
+    # Only container-specific values that are NOT in .env
     environment:
       PORT: 3000
       DB_PATH: /data/jnote.sqlite
