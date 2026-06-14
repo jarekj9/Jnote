@@ -69,7 +69,11 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
+          # Skip the cache *lookup* on the first run after the context
+          # changed (the cached layers reference paths from the old
+          # context and poison the build). Once the new context has
+          # populated the cache, restore the lookup.
+          cache-from: ""
           cache-to: type=gha,mode=max
 
   frontend:
@@ -111,5 +115,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
+          # Skip the cache *lookup* on the first run after the context
+          # changed. Restore `cache-from: type=gha` once the new context
+          # has populated the cache.
+          cache-from: ""
           cache-to: type=gha,mode=max
