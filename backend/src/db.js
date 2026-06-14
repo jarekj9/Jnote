@@ -59,6 +59,23 @@ CREATE TABLE IF NOT EXISTS note_tags (
 );
 CREATE INDEX IF NOT EXISTS idx_note_tags_tag ON note_tags(tag_id);
 
+-- Personal access tokens (API keys) for programmatic access. The token
+-- itself is shown to the user once at creation; only its SHA-256 hash
+-- is stored. The prefix column is a short non-secret slice for UI
+-- identification.
+CREATE TABLE IF NOT EXISTS api_tokens (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name          TEXT NOT NULL,
+  token_hash    TEXT NOT NULL UNIQUE,
+  prefix        TEXT NOT NULL,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  last_used_at  TEXT,
+  expires_at    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_api_tokens_user ON api_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_api_tokens_hash ON api_tokens(token_hash);
+
 -- Full-text search over note title and content.
 CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
   title, content, content='notes', content_rowid='id'

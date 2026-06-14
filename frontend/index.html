@@ -24,6 +24,7 @@
       <div id="userMenu" class="menu" hidden>
         <div class="menu-header" id="userMenuName"></div>
         <a id="adminLink" class="menu-item" href="#/admin" hidden>Admin panel</a>
+        <a id="apiTokensLink" class="menu-item" href="#">API tokens</a>
         <a id="exportAllLink" class="menu-item" href="/api/export/all">Export all (.zip)</a>
         <label class="menu-item" for="importInput">Import…</label>
         <input id="importInput" type="file" accept=".md,.zip" multiple hidden />
@@ -132,6 +133,36 @@
           <ul id="pendingList" class="user-list"></ul>
           <h3>All accounts</h3>
           <ul id="allUsersList" class="user-list"></ul>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <!-- Personal access tokens panel. -->
+  <template id="tokensTpl">
+    <div class="modal">
+      <div class="modal-card">
+        <header><h2>Personal access tokens</h2><button class="close-x" data-close>&times;</button></header>
+        <div class="tokens-body">
+          <p class="muted">Use tokens to call the Jnote API from scripts, curl, or third-party tools. Send them as <code>Authorization: Bearer &lt;token&gt;</code>. Treat them like passwords — anyone with the token can read, edit, and delete your notes.</p>
+
+          <h3>Create new token</h3>
+          <form id="createTokenForm" class="create-token">
+            <input name="name" placeholder="Token name (e.g. backup-script)" required maxlength="100" autocomplete="off" />
+            <input name="expiresInDays" type="number" min="1" max="3650" placeholder="Days (optional)" />
+            <button type="submit" class="primary">Create</button>
+          </form>
+
+          <div id="newTokenBox" class="new-token-box" hidden>
+            <p class="warn">Copy this token now. You will not be able to see it again.</p>
+            <div class="token-display">
+              <code id="newTokenValue"></code>
+              <button id="copyTokenBtn" class="primary" type="button">Copy</button>
+            </div>
+          </div>
+
+          <h3>Existing tokens</h3>
+          <ul id="tokensList" class="user-list"></ul>
         </div>
       </div>
     </div>

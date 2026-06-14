@@ -198,6 +198,33 @@ export class SqliteConnector extends StorageConnector {
     tx(tree);
     return { folders: folderCount, notes: noteCount };
   }
+
+  // -------- api tokens --------
+  createApiToken({ userId, name, tokenHash, prefix, expiresAt = null }) {
+    const info = db.prepare(`
+      INSERT INTO api_tokens (user_id, name, token_hash, prefix, expires_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(userId, name, tokenHash, prefix, expiresAt);
+    return db.prepare('SELECT * FROM api_tokens WHERE id = ?').get(info.lastInsertRowid);
+  }
+  listApiTokens(userId) {
+    // Never return token_hash to the caller.
+    return db.prepare(`
+      SELECT id, name, prefix, created_at, last_used_at, expires_at
+      FROM api_tokens WHERE user_id = ?
+      ORDER BY created_at DESC
+    `).all(userId);
+  }
+  getApiTokenByHash(hash) {
+    return db.prepare('SELECT * FROM api_tokens WHERE token_hash = ?').get(hash) || null;
+  }
+  deleteApiToken(id, userId) {
+    const info = db.prepare('DELETE FROM api_tokens WHERE id = ? AND user_id = ?').run(id, userId);
+    return info.changes > 0;
+  }
+  touchApiToken(id) {
+    db.prepare(`UPDATE api_tokens SET last_used_at = datetime('now') WHERE id = ?`).run(id);
+  }
 }
 
 // FTS5 query sanitizer: escape special chars, append '*' for prefix match on the last token.

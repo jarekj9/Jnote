@@ -19,7 +19,7 @@ backend/src/
   routes/{notes,users,search,io}.js
 frontend/
   index.html, css/style.css
-  js/{app,state,api,auth,theme,topbar,search,sidebar,editor,admin,markdown,toast}.js
+  js/{app,state,api,auth,theme,topbar,search,sidebar,editor,admin,markdown,toast,tokens}.js
   vendor/{marked,dompurify}.min.js
 docker-compose.yml · .env.example
 ```
@@ -43,6 +43,7 @@ Persistence details: `StorageConnector` in `backend/src/storage/connector.js` is
 - `JWT_SECRET` has a dev fallback if unset. **Do not add a startup validator** — the human removed it intentionally.
 - Register/login use uniform responses + dummy bcrypt for timing. Don't reintroduce per-failure leaks (e.g. `"username taken"`, `"account not active"`) — all collapse to `401 {error: "invalid credentials"}`.
 - Google OAuth does **not** link by email — always creates a brand-new pending user with a derived username; admin must approve. This closes the email-takeover path.
+- `requireAuth` is dual-mode: cookie JWT for the browser, `Authorization: Bearer jnote_pat_…` for programmatic clients. An invalid Bearer header fails closed (no fall-through to the cookie). See `src/auth.js`.
 - FTS5 queries go through `sanitizeFtsQuery` in `sqliteConnector.js`. Don't bypass.
 - Import (.zip) validates every entry path (no absolute, no `..`, no control chars, length cap). Skipped entries are reported as `skipped` in the response.
 - Event handler gotcha: `e.currentTarget` becomes `null` after the first `await`. Capture it: `const form = e.currentTarget` *before* any `await`.

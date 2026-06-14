@@ -46,4 +46,11 @@ export class StorageConnector {
   // ---------- bulk import ----------
   // Creates folder tree + notes in one go. Returns counts.
   importTree(userId, tree) { throw new Error('not implemented'); }
+
+  // ---------- personal access tokens ----------
+  createApiToken({ userId, name, tokenHash, prefix, expiresAt = null }) { throw new Error('not implemented'); }
+  listApiTokens(userId) { throw new Error('not implemented'); }
+  getApiTokenByHash(hash) { throw new Error('not implemented'); }
+  deleteApiToken(id, userId) { throw new Error('not implemented'); }
+  touchApiToken(id) { throw new Error('not implemented'); }
 }

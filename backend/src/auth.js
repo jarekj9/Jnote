@@ -12,10 +12,22 @@ import {
 } from './validation.js';
 
 const COOKIE_NAME = 'jnote_token';
+const TOKEN_PREFIX = 'jnote_pat_';
 
 // Dummy bcrypt hash used to flatten login timing when the user does not
 // exist. Pre-computed once at module load.
 const DUMMY_HASH = bcrypt.hashSync('not-a-real-password-just-for-timing', 10);
+
+// --- Personal access token helpers ---
+export function generateApiToken() {
+  return TOKEN_PREFIX + crypto.randomBytes(32).toString('base64url');
+}
+export function hashApiToken(plaintext) {
+  return crypto.createHash('sha256').update(plaintext).digest('hex');
+}
+export function tokenPrefix(plaintext) {
+  return plaintext.slice(0, TOKEN_PREFIX.length + 8) + '…';
+}
 
 export function hashPassword(plain) {
   return bcrypt.hashSync(plain, 10);
@@ -49,6 +61,34 @@ function clearAuthCookie(res) {
 }
 
 export function requireAuth(req, res, next) {
+  // Bearer token takes precedence over cookie — it's the canonical
+  // programmatic-auth path. If a Bearer header is present and valid, use
+  // it. If it's present but invalid, fail closed (don't fall through to
+  // the cookie, which would let a stale cookie authenticate an
+  // otherwise-unauthorized API call).
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.slice('Bearer '.length).trim();
+    if (!token.startsWith(TOKEN_PREFIX)) {
+      return res.status(401).json({ error: 'invalid token' });
+    }
+    const storage = getStorage();
+    const apiToken = storage.getApiTokenByHash(hashApiToken(token));
+    if (!apiToken) return res.status(401).json({ error: 'invalid token' });
+    if (apiToken.expires_at && new Date(apiToken.expires_at) < new Date()) {
+      return res.status(401).json({ error: 'token expired' });
+    }
+    const user = storage.getUserById(apiToken.user_id);
+    if (!user || user.status !== 'active') {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+    req.user = user;
+    // Update last_used_at out-of-band; never block the response on it.
+    setImmediate(() => { try { storage.touchApiToken(apiToken.id); } catch {} });
+    return next();
+  }
+
+  // Fall back to the cookie-based session (the browser path).
   const token = req.cookies?.[COOKIE_NAME];
   const payload = token ? verifyToken(token) : null;
   if (!payload) return res.status(401).json({ error: 'unauthorized' });
@@ -147,6 +187,57 @@ export function authRoutes(app) {
   });
 
   app.post('/api/auth/logout', (_req, res) => { clearAuthCookie(res); res.json({ ok: true }); });
+
+  // ---- Personal access tokens (API keys) ----
+  // These allow programmatic access to the API. Cookie auth still works
+  // for the SPA; these endpoints let a user mint a long-lived token to
+  // use from curl, scripts, third-party tools, etc.
+  app.post('/api/auth/tokens', requireAuth, (req, res) => {
+    const { name, expiresInDays } = req.body || {};
+    if (typeof name !== 'string' || !name.trim()) return res.status(400).json({ error: 'name required' });
+    if (name.length > 100) return res.status(400).json({ error: 'name too long (max 100)' });
+    if (/[\x00-\x1F\x7F]/.test(name)) return res.status(400).json({ error: 'name contains invalid characters' });
+
+    let expiresAt = null;
+    if (expiresInDays !== undefined && expiresInDays !== null && expiresInDays !== '') {
+      const days = Number(expiresInDays);
+      if (!Number.isInteger(days) || days < 1 || days > 3650) {
+        return res.status(400).json({ error: 'expiresInDays must be an integer 1-3650' });
+      }
+      expiresAt = new Date(Date.now() + days * 86400000).toISOString();
+    }
+
+    const plaintext = generateApiToken();
+    const apiToken = storage.createApiToken({
+      userId: req.user.id,
+      name: name.trim(),
+      tokenHash: hashApiToken(plaintext),
+      prefix: tokenPrefix(plaintext),
+      expiresAt,
+    });
+    // Return the plaintext token ONCE. It is never stored and cannot be
+    // recovered from the hash later.
+    res.status(201).json({
+      id: apiToken.id,
+      name: apiToken.name,
+      prefix: apiToken.prefix,
+      created_at: apiToken.created_at,
+      expires_at: apiToken.expires_at,
+      token: plaintext,
+    });
+  });
+
+  app.get('/api/auth/tokens', requireAuth, (req, res) => {
+    res.json(storage.listApiTokens(req.user.id));
+  });
+
+  app.delete('/api/auth/tokens/:id', requireAuth, (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'id invalid' });
+    const ok = storage.deleteApiToken(id, req.user.id);
+    if (!ok) return res.status(404).json({ error: 'not found' });
+    res.json({ ok: true });
+  });
 
   app.get('/api/auth/me', (req, res) => {
     const token = req.cookies?.[COOKIE_NAME];

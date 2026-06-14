@@ -38,3 +38,10 @@ The app is a note taking app, that relies on markdown. The name is Jnote.
 
 # Final instructions
 Dont try to deploy or do docker commands.
+
+# Added later
+Features requested after the initial spec:
+
+- **Programmatic API via personal access tokens** — `Authorization: Bearer jnote_pat_…` works alongside the cookie session. Mint from the user menu → API tokens.
+- **Admin user management** — disable, enable, delete accounts; set or clear a user's password.
+- **Tag search shortcuts** — typing `#foo` or `tag:foo` filters by tag.

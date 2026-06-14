@@ -5,6 +5,7 @@ import { logout } from './auth.js';
 import { toast } from './toast.js';
 import { loadFolders, loadNotesForCurrentFolder, loadTags } from './sidebar.js';
 import { openAdminPanel } from './admin.js';
+import { openTokensPanel } from './tokens.js';
 
 export function initTopbar() {
   document.getElementById('sidebarToggle').addEventListener('click', () => {
@@ -28,6 +29,11 @@ export function initTopbar() {
   document.getElementById('adminLink').addEventListener('click', (e) => {
     e.preventDefault();
     openAdminPanel();
+  });
+
+  document.getElementById('apiTokensLink').addEventListener('click', (e) => {
+    e.preventDefault();
+    openTokensPanel();
   });
 
   document.getElementById('importInput').addEventListener('change', async (e) => {
