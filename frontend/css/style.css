@@ -263,13 +263,14 @@ mark { background: var(--mark); color: inherit; padding: 0 2px; border-radius: 2
 .note-tags:focus { background: var(--bg); border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
 .toolbar {
   display: flex; gap: 3px; align-items: center;
+  flex-wrap: wrap;
   padding: 8px 18px; border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--bg-elev) 85%, transparent);
   backdrop-filter: saturate(180%) blur(12px);
   -webkit-backdrop-filter: saturate(180%) blur(12px);
   position: sticky; top: 0; z-index: 2;
 }
-.toolbar .sep { width: 1px; height: 18px; background: var(--border); margin: 0 5px; }
+.toolbar .sep { width: 1px; height: 18px; background: var(--border); margin: 0 5px; align-self: center; }
 .toolbar button {
   height: 28px; min-width: 30px; padding: 0 8px;
   background: transparent; border: 1px solid transparent; border-radius: var(--radius-sm); cursor: pointer;
@@ -405,4 +406,6 @@ mark { background: var(--mark); color: inherit; padding: 0 2px; border-radius: 2
   .brand { display: none; }
   #searchInput { font-size: 14px; }
   .note-head, .editor, .preview { padding-left: 18px; padding-right: 18px; }
+  .toolbar { padding: 6px 14px; }
+  #noteDates { display: none; }  /* save horizontal space; dates aren't critical on mobile */
 }
