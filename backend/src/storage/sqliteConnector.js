@@ -154,7 +154,8 @@ export class SqliteConnector extends StorageConnector {
       SELECT t.name, COUNT(nt.note_id) AS count
       FROM tags t LEFT JOIN note_tags nt ON nt.tag_id = t.id
       WHERE t.user_id = ?
-      GROUP BY t.id ORDER BY LOWER(t.name) ASC
+      GROUP BY t.id HAVING COUNT(nt.note_id) > 0
+      ORDER BY LOWER(t.name) ASC
     `).all(userId);
   }
   setNoteTags(noteId, tagNames) {
